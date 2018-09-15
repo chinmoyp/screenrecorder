@@ -16,6 +16,15 @@ import android.view.View;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.mobile.client.AWSMobileClient;
+import com.amazonaws.mobile.config.AWSConfiguration;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferUtility;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferState;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferObserver;
+import com.amazonaws.mobileconnectors.s3.transferutility.TransferListener;
+import com.amazonaws.services.s3.AmazonS3Client;
+
 import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -34,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private MediaProjectionCallback mMediaProjectionCallback;
     private ToggleButton mToggleButton;
     private MediaRecorder mMediaRecorder;
+    private String lastFilePath = null;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -43,13 +53,15 @@ public class MainActivity extends AppCompatActivity {
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
         mScreenDensity = metrics.densityDpi;
 
+        AWSMobileClient.getInstance().initialize(this).execute();
+
         initRecorder();
         prepareRecorder();
 
         mProjectionManager = (MediaProjectionManager) getSystemService
                 (Context.MEDIA_PROJECTION_SERVICE);
 
-        mToggleButton = (ToggleButton) findViewById(R.id.toggle);
+        mToggleButton = findViewById(R.id.toggle);
         mToggleButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -95,7 +107,69 @@ public class MainActivity extends AppCompatActivity {
             mMediaRecorder.reset();
             Log.v(TAG, "Recording Stopped");
             stopScreenSharing();
+            uploadWithTransferUtility();
         }
+    }
+    public void uploadWithTransferUtility() {
+        if (null == lastFilePath) {
+            Log.d("MainActivity","lastFilePath is null; aborting");
+            return;
+        }
+
+        BasicAWSCredentials credentials = new BasicAWSCredentials("AKIAIH7SEKMOMRAX2R3Q",
+                "1+JmTcnu7EQXG1hcsFEYeMB5tagmI5N6YT73SjLv");
+        AmazonS3Client s3Client = new AmazonS3Client(credentials);
+
+        AWSConfiguration configuration = AWSMobileClient.getInstance().getConfiguration();
+
+        TransferUtility transferUtility =
+                        TransferUtility.builder()
+                                .context(getApplicationContext())
+                                .awsConfiguration(configuration)
+                                .s3Client(s3Client)
+                                .build();
+
+
+        File file = new File(lastFilePath);
+        TransferObserver uploadObserver =
+                transferUtility.upload(
+                        "test/" + file.getName(),
+                        file);
+
+        // Attach a listener to the observer to get state update and progress notifications
+        uploadObserver.setTransferListener(new TransferListener() {
+
+            @Override
+            public void onStateChanged(int id, TransferState state) {
+                if (TransferState.COMPLETED == state) {
+                    // Handle a completed upload.
+                }
+            }
+
+            @Override
+            public void onProgressChanged(int id, long bytesCurrent, long bytesTotal) {
+                float percentDonef = ((float) bytesCurrent / (float) bytesTotal) * 100;
+                int percentDone = (int)percentDonef;
+
+                Log.d("YourActivity", "ID:" + id + " bytesCurrent: " + bytesCurrent
+                        + " bytesTotal: " + bytesTotal + " " + percentDone + "%");
+            }
+
+            @Override
+            public void onError(int id, Exception ex) {
+                // Handle errors
+            }
+
+        });
+
+        // If you prefer to poll for the data, instead of attaching a
+        // listener, check for the state and progress in the observer.
+        if (TransferState.COMPLETED == uploadObserver.getState()) {
+            // Handle a completed upload.
+        }
+
+        Log.d("YourActivity", "Bytes Transferred: " + uploadObserver.getBytesTransferred());
+        Log.d("YourActivity", "Bytes Total: " + uploadObserver.getBytesTotal());
     }
 
     private void shareScreen() {
@@ -165,6 +239,9 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "Failed to create Recordings directory", Toast.LENGTH_SHORT).show();
             return null;
         }
+
+        lastFilePath = filePath;
+
         return filePath;
     }
 

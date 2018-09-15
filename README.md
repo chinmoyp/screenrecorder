@@ -4,3 +4,6 @@ Import the project and run the application.
 You get a button on the app, clicking on which the app starts recording the screen 
 and storing the video in you file manager using media projection apis don't kill the
 app just minimize it for recording other stuffs.
+
+NOTE: Currently, MediaRecorder does not work on the emulator. 
+https://developer.android.com/reference/android/media/MediaRecorder
